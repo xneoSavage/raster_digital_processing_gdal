@@ -2,8 +2,10 @@ import gdal
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from osgeo import osr
+from osgeo.osr import CoordinateTransformation, SpatialReference
 from math import pi
+from pyproj import Transformer, Proj, CRS
+
 
 # 1. Завантажити растрові геодані в програмне середовище Python.
 filename = "tif/ASTGTMV003_N37W118_num.tif"
@@ -13,8 +15,7 @@ dataset = gdal.Open(filename)
 # растрових геоданих із поточної системи координат у систему UTM WGS84
 # із вибором відповідної зони.
 
-proj = osr.SpatialReference(dataset.GetProjection())  #Просторова прив'язка із завантаженого файла за координатами tif file
-print(proj)
+proj = SpatialReference(dataset.GetProjection())  #Просторова прив'язка із завантаженого файла за координатами tif file
 # 3. Сформувати (отримавши відповідні значення Value)
 # та експортувати з середовища Python у табличному/текстовому форматі наступну таблицю:
 
@@ -66,14 +67,14 @@ file = "tif/ASTGTMV003_N37W118_dem.tif"
 demData = gdal.Open(file)
 demDataArr = demData.ReadAsArray()
 
-proj = osr.SpatialReference(wkt=dataset.GetProjection()) #задаємо проекцію із завантаженого файлу у створюваний
+proj = SpatialReference(wkt=dataset.GetProjection()) #задаємо проекцію із завантаженого файлу у створюваний
 
 binary = np.where(demDataArr > 2500, 1, 0) #масив висот де висота більше 2500
 plt.figure()
 plt.imshow(binary)
 plt.show()
 
-proj = osr.SpatialReference(wkt=dataset.GetProjection())  #Просторова прив'язка із завантаженого файла за координатами tif file
+proj = SpatialReference(wkt=dataset.GetProjection())  #Просторова прив'язка із завантаженого файла за координатами tif file
 
 colsDem, rowsDem = demData.RasterXSize, demData.RasterYSize
 bands = 1
@@ -81,10 +82,18 @@ geoT = demData.GetGeoTransform()
 proj = demData.GetProjection()
 
 pixels = np.count_nonzero(binary == 1)
+transformer = Transformer.from_crs("epsg:4326", "epsg:3857", always_xy=True)
+transformated_PixelSize_m = transformer.transform(gt[1], gt[5])
+OnePixelArea_m = abs(transfo08rmated_PixelSize_m[0] * transformated_PixelSize_m[1])
+total_RasterArea_m = (cols**2)*OnePixelArea_m
+total_ExpRasterArea_m = pixels*OnePixelArea_m
+
+
+
 
 OnePixel = abs(geoT[1] * geoT[5])
 area_Pixels = pixels * OnePixel  #площа території яка вища за 2500 в градусах
-area_OneDegree = ((2*pi*6371)/360)**2  #площа 1 градусу в км2 на сфері
+area_OneDegree = ((2*pi*6371000)/360)**2  #площа 1 градусу в км2 на сфері
 total_RasterArea = ((cols**2) * OnePixel) * area_OneDegree  #площа досліджуваної території
 total_ResArea = area_Pixels*area_OneDegree  #площа території де висоти більше 2500 в км2
 
@@ -125,7 +134,22 @@ stat = pd.DataFrame({'Spec': 'Value',
                      "area_OneDegree": [area_OneDegree],
                      "total_RasterArea": [total_RasterArea],
                      "total_ResArea": [total_ResArea],
+                     'transformated_PixelSize_m': [transformated_PixelSize_m],
+                     'OnePixelArea_m': [OnePixelArea_m],
+                     'total_RasterArea_m': [total_RasterArea_m],
+                     'total_ExpRasterArea_m': [total_ExpRasterArea_m]
                      })
+
+
+
+def difference_area(area1, area2):
+    diff = area1 - area2
+    return print(f"First method result: {area1/1000} km2\n"
+                 f"Second method result: {area2/1000} km2\n"
+                 f"Difference between method 1 and method 2: {diff/1000} km2")
+
+
+difference_area(total_RasterArea, total_RasterArea_m)
 
 print(stat.transpose())
 stat.to_csv('table.csv')
